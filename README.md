@@ -129,8 +129,3 @@ build/libs/skyblock_plus-<version>+<minecraft_version>.jar
 3. Put the Skyblock+ jar in your `mods` folder.
 4. Launch Minecraft.
 5. Press `Right Shift` in-game to open the Skyblock+ menu.
-
-
-## Credits
-
-Some features and references were adapted from or inspired by Odin. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
