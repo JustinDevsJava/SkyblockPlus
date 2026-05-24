@@ -103,12 +103,6 @@ Useful subcommands:
 /skyblock_plus resetLifeTimer
 ```
 
-Alias:
-
-```text
-/gy
-```
-
 ## Building
 
 Requirements:
@@ -136,11 +130,6 @@ build/libs/skyblock_plus-<version>+<minecraft_version>.jar
 4. Launch Minecraft.
 5. Press `Right Shift` in-game to open the Skyblock+ menu.
 
-## License
-
-This project is currently licensed under the PolyForm Shield License 1.0.0.
-
-See [LICENSE.md](LICENSE.md) for details.
 
 ## Credits
 
