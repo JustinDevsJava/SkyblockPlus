@@ -1,0 +1,11 @@
+package com.launium.skyblock_plus.client.ui.modulelist;
+
+import com.launium.skyblock_plus.client.ui.animation.Animation;
+import com.launium.skyblock_plus.client.ui.animation.Smooth;
+
+public class ModuleListContext {
+    public boolean initializeAnimation = false;
+    public boolean needResort = false;
+    public Animation animatedX = new Smooth(0f, 0f);
+    public Animation animatedY = new Smooth(0f, 0f);
+}

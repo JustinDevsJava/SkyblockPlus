@@ -1,0 +1,20 @@
+{
+  "skyblock_plus.bilibili": "bilibili",
+
+  "key.category.skyblock_plus.main": "Skyblock+",
+  "key.skyblock_plus.ghost_pickaxe": "Ghost Pickaxe",
+  "key.skyblock_plus.show_click_gui": "Show Click GUI",
+  "key.skyblock_plus.switch_auto_clicker": "Switch Auto Clicker",
+  "key.skyblock_plus.switch_pickobulus_preview": "Switch Pickobulus Preview",
+  "key.skyblock_plus.switch_camera_no_clip": "Switch Camera No Clip",
+  "key.skyblock_plus.switch_harp_bot": "Switch Harp Bot",
+  "key.skyblock_plus.switch_day_viewer": "Switch Day Viewer",
+
+  "key.skyblock_plus.speed_dial_up": "Speed Dial - Up",
+  "key.skyblock_plus.speed_dial_page_up": "Speed Dial - Page Up",
+  "key.skyblock_plus.speed_dial_down": "Speed Dial - Down",
+  "key.skyblock_plus.speed_dial_page_down": "Speed Dial - Page Down",
+  "key.skyblock_plus.speed_dial_left": "Speed Dial - Left",
+  "key.skyblock_plus.speed_dial_right": "Speed Dial - Right",
+  "key.skyblock_plus.speed_dial_star": "Speed Dial - Add/Remove Star"
+}
