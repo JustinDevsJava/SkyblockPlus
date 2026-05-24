@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "com.launium.skyblock_plus.client.mixin",
+  "package": "com.justindevsjava.skyblock_plus.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
     "AccessFont",

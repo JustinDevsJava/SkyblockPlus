@@ -4,20 +4,21 @@
   "version": "${version}",
   "name": "Skyblock+",
   "description": "Modern SkyBlock experience enhanced.",
+  "icon": "icon.png",
   "authors": [
-    "Launium"
+    "JustinDevsJava"
   ],
   "contact": {
-    "homepage": "https://launium.com/doc/Skyblock+"
+    "homepage": "https://modrinth.com/mod/sb+"
   },
   "license": "PolyForm-Shield-1.0.0",
   "environment": "client",
   "entrypoints": {
     "client": [
-      "com.launium.skyblock_plus.client.SkyblockPlusClient"
+      "com.justindevsjava.skyblock_plus.client.SkyblockPlusClient"
     ],
     "modmenu": [
-      "com.launium.skyblock_plus.client.SkyblockPlusModMenuIntegration"
+      "com.justindevsjava.skyblock_plus.client.SkyblockPlusModMenuIntegration"
     ]
   },
   "mixins": [
@@ -28,13 +29,5 @@
     "fabricloader": ">=0.18.0",
     "fabric": ">=0.137.0",
     "minecraft": ">=1.21.11- <1.21.12-"
-  },
-  "custom": {
-    "modmenu": {
-      "links": {
-        "skyblock_plus.bilibili": "https://space.bilibili.com/404017926",
-        "modmenu.donate": "https://afdian.com/a/launium"
-      }
-    }
   }
 }
