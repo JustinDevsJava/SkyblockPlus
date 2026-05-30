@@ -357,14 +357,17 @@ public class FeaturesPage extends AbstractPage {
             ConfigManager.GENERAL.SHOW_FEATURE_LIST = newValue;
             ConfigManager.GENERAL.markAsChanged();
         }));
-        add(list, "General", new ModuleItemView(client, "Auto updater", "Checks GitHub releases and installs staged updates after restart.", ConfigManager.GENERAL.AUTO_UPDATE_ENABLED, newValue -> {
+        add(list, "General", new ModuleItemView(client, "Auto updater", "Checks releases. Downloads only after you press update.", ConfigManager.GENERAL.AUTO_UPDATE_ENABLED, newValue -> {
             ConfigManager.GENERAL.AUTO_UPDATE_ENABLED = newValue;
             ConfigManager.GENERAL.markAsChanged();
             AutoUpdater.setEnabledState(newValue);
             if (newValue) {
                 AutoUpdater.checkForUpdatesAsync(true);
             }
-        }));
+        }).withOptions(() -> openOptions("Auto updater")));
+        addOption(list, "General", "Auto updater", new ModuleItemView(client, "Check for updates",
+                "Press to check. Downloads need another press.", AutoUpdater::runMenuUpdateAction)
+                .withDynamicText(AutoUpdater::getMenuActionTitle, AutoUpdater::getMenuActionSubtitle));
         add(list, "HUD", new ModuleItemView(client, "Day viewer", "Display the date of the current world.", ConfigManager.FEATURES.ENABLE_DAY_VIEWER, newValue -> {
             ConfigManager.FEATURES.ENABLE_DAY_VIEWER = newValue;
             if (ConfigManager.FEATURES.ENABLE_DAY_VIEWER) SkyblockPlusClient.moduleList.showModule(DayViewer.INSTANCE);

@@ -5,6 +5,7 @@ import com.justindevsjava.skyblock_plus.client.SkyblockPlusClient;
 import com.justindevsjava.skyblock_plus.client.config.ConfigManager;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarFile;
@@ -26,6 +28,7 @@ import java.util.jar.JarFile;
 public final class AutoUpdater {
     private static final long CHECK_INTERVAL_MS = 15L * 60L * 1000L;
     private static final AtomicBoolean CHECKING = new AtomicBoolean();
+    private static final AtomicBoolean DOWNLOADING = new AtomicBoolean();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -36,7 +39,10 @@ public final class AutoUpdater {
     private static final String EXPECTED_ASSET_PREFIX = "skyblock_plus-";
 
     private static volatile long lastCheckStartedMs;
+    private static volatile String lastPromptedTag = "";
     private static volatile String statusLine = "Ready. Use /skyblock_plus update status.";
+    private static volatile AvailableUpdate availableUpdate;
+    private static volatile boolean installApprovedThisSession;
 
     private AutoUpdater() {
     }
@@ -60,7 +66,7 @@ public final class AutoUpdater {
     }
 
     public static void onClientStopping() {
-        if (!ConfigManager.GENERAL.AUTO_UPDATE_ENABLED) {
+        if (!installApprovedThisSession) {
             return;
         }
         trySchedulePendingInstall();
@@ -70,14 +76,61 @@ public final class AutoUpdater {
         return statusLine;
     }
 
-    public static void setEnabledState(boolean enabled) {
-        statusLine = enabled ? "Auto updater enabled." : "Auto updater disabled.";
-        if (!enabled) {
-            clearPendingUpdate();
+    public static String getMenuActionTitle() {
+        if (DOWNLOADING.get()) {
+            return "Downloading update";
+        }
+        if (CHECKING.get()) {
+            return "Checking for updates";
+        }
+        if (availableUpdate != null && installApprovedThisSession) {
+            return "Update approved";
+        }
+        if (availableUpdate != null) {
+            return "Update available";
+        }
+        return "Check for updates";
+    }
+
+    public static String getMenuActionSubtitle() {
+        if (DOWNLOADING.get()) {
+            return "Downloading the update file you approved.";
+        }
+        if (CHECKING.get()) {
+            return "Reading GitHub release metadata.";
+        }
+        AvailableUpdate update = availableUpdate;
+        if (update != null && installApprovedThisSession) {
+            return "Close the game to install " + update.displayTag() + ".";
+        }
+        if (update != null) {
+            return "Press to download " + update.displayTag() + " from GitHub (" + formatBytes(update.size) + ").";
+        }
+        return "Press to check. Downloads need another press.";
+    }
+
+    public static void runMenuUpdateAction() {
+        if (availableUpdate == null) {
+            checkForUpdatesAsync(true);
+        } else {
+            downloadAvailableUpdateAsync();
         }
     }
 
+    public static void setEnabledState(boolean enabled) {
+        if (enabled) {
+            statusLine = "Auto updater enabled. Updates will ask before downloading.";
+            return;
+        }
+
+        availableUpdate = null;
+        installApprovedThisSession = false;
+        statusLine = "Auto updater disabled.";
+        clearPendingUpdate();
+    }
+
     public static void clearPendingUpdate() {
+        installApprovedThisSession = false;
         resolveCurrentJarPath()
                 .map(AutoUpdater::pendingPathFor)
                 .ifPresent(path -> {
@@ -103,7 +156,7 @@ public final class AutoUpdater {
 
         Thread.startVirtualThread(() -> {
             try {
-                performCheck();
+                performCheck(manual);
             } catch (Exception e) {
                 statusLine = "Update check failed. See log for details.";
                 SkyblockPlusClient.LOGGER.error("[Skyblock+ AutoUpdater] Failed to check for updates", e);
@@ -113,7 +166,33 @@ public final class AutoUpdater {
         });
     }
 
-    private static void performCheck() throws IOException, InterruptedException {
+    public static void downloadAvailableUpdateAsync() {
+        AvailableUpdate update = availableUpdate;
+        if (update == null) {
+            statusLine = "No update is ready. Run /skyblock_plus update check first.";
+            sendClientMessage(statusLine);
+            return;
+        }
+        if (!DOWNLOADING.compareAndSet(false, true)) {
+            statusLine = "Already downloading update " + update.displayTag() + '.';
+            return;
+        }
+
+        statusLine = "Downloading update " + update.displayTag() + " after user approval...";
+        Thread.startVirtualThread(() -> {
+            try {
+                performDownload(update);
+            } catch (Exception e) {
+                statusLine = "Update download failed. See log for details.";
+                SkyblockPlusClient.LOGGER.error("[Skyblock+ AutoUpdater] Failed to download update", e);
+                sendClientMessage(statusLine);
+            } finally {
+                DOWNLOADING.set(false);
+            }
+        });
+    }
+
+    private static void performCheck(boolean manual) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/" + UPDATE_REPO + "/releases/latest"))
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28")
@@ -130,6 +209,7 @@ public final class AutoUpdater {
 
         GithubRelease release = SkyblockPlusClient.GSON.fromJson(releaseResponse.body(), GithubRelease.class);
         if (release == null || release.assets == null || release.assets.length == 0) {
+            availableUpdate = null;
             statusLine = "No downloadable release jar found yet.";
             return;
         }
@@ -141,6 +221,7 @@ public final class AutoUpdater {
                 .filter(asset -> asset.name.startsWith(EXPECTED_ASSET_PREFIX))
                 .findFirst();
         if (chosenAsset.isEmpty()) {
+            availableUpdate = null;
             statusLine = "Release exists, but there is no Skyblock+ jar asset to download.";
             return;
         }
@@ -152,18 +233,9 @@ public final class AutoUpdater {
         String normalizedCurrentVersion = normalizeVersion(currentVersion);
         GithubAsset asset = chosenAsset.get();
 
-        Optional<Path> currentJar = resolveCurrentJarPath();
-        Path destination;
-        if (currentJar.isPresent()) {
-            destination = pendingPathFor(currentJar.get());
-        } else {
-            Path updateDir = Path.of("config", "Skyblock+", "updates");
-            Files.createDirectories(updateDir);
-            destination = updateDir.resolve(asset.name);
-        }
-
         if (latestVersion.equals(normalizedCurrentVersion)) {
-            currentJar.map(AutoUpdater::pendingPathFor).ifPresent(path -> {
+            availableUpdate = null;
+            resolveCurrentJarPath().map(AutoUpdater::pendingPathFor).ifPresent(path -> {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException e) {
@@ -174,10 +246,35 @@ public final class AutoUpdater {
             return;
         }
 
-        if (Files.exists(destination) && (asset.size <= 0 || Files.size(destination) == asset.size)) {
+        AvailableUpdate update = new AvailableUpdate(release.tagName, latestVersion, currentVersion,
+                asset.name, asset.size, asset.browserDownloadUrl);
+        availableUpdate = update;
+
+        Optional<Path> currentJar = resolveCurrentJarPath();
+        Path destination = destinationFor(update, currentJar, false);
+        if (Files.exists(destination) && (update.size <= 0 || Files.size(destination) == update.size)) {
             statusLine = currentJar.isPresent()
-                    ? "Update " + release.tagName + " is ready. Restart the game to apply it."
-                    : "Update " + release.tagName + " is already downloaded to config/Skyblock+/updates.";
+                    ? "Update " + update.displayTag() + " is already staged. Press update or run /skyblock_plus update download to approve installing it on close."
+                    : "Update " + update.displayTag() + " is already downloaded. Press update or run /skyblock_plus update download to approve it.";
+            notifyUpdateAvailable(update, manual);
+            return;
+        }
+
+        statusLine = "Update " + update.displayTag() + " available from GitHub: " + update.assetName
+                + " (" + formatBytes(update.size) + "). Run /skyblock_plus update download to download it.";
+        notifyUpdateAvailable(update, manual);
+    }
+
+    private static void performDownload(AvailableUpdate update) throws IOException, InterruptedException {
+        Optional<Path> currentJar = resolveCurrentJarPath();
+        Path destination = destinationFor(update, currentJar, true);
+
+        if (Files.exists(destination) && (update.size <= 0 || Files.size(destination) == update.size)) {
+            installApprovedThisSession = true;
+            statusLine = currentJar.isPresent()
+                    ? "Update " + update.displayTag() + " is approved. Close the game to install it."
+                    : "Update " + update.displayTag() + " is already downloaded to config/Skyblock+/updates.";
+            sendClientMessage(statusLine);
             return;
         }
 
@@ -187,7 +284,7 @@ public final class AutoUpdater {
             cleanupFallbackDownloads(destination.getParent(), destination);
         }
 
-        HttpRequest downloadRequest = HttpRequest.newBuilder(URI.create(asset.browserDownloadUrl))
+        HttpRequest downloadRequest = HttpRequest.newBuilder(URI.create(update.browserDownloadUrl))
                 .header("User-Agent", "Skyblock+ AutoUpdater")
                 .timeout(Duration.ofSeconds(60))
                 .GET()
@@ -195,6 +292,7 @@ public final class AutoUpdater {
         HttpResponse<InputStream> downloadResponse = HTTP.send(downloadRequest, HttpResponse.BodyHandlers.ofInputStream());
         if (downloadResponse.statusCode() != 200) {
             statusLine = "Download failed with HTTP " + downloadResponse.statusCode() + '.';
+            sendClientMessage(statusLine);
             return;
         }
 
@@ -205,6 +303,7 @@ public final class AutoUpdater {
         if (!verifyDownloadedJar(tempFile)) {
             Files.deleteIfExists(tempFile);
             statusLine = "Downloaded file failed verification.";
+            sendClientMessage(statusLine);
             return;
         }
         try {
@@ -213,10 +312,12 @@ public final class AutoUpdater {
             Files.move(tempFile, destination, StandardCopyOption.REPLACE_EXISTING);
         }
 
+        installApprovedThisSession = true;
         statusLine = currentJar.isPresent()
-                ? "Downloaded " + release.tagName + ". Restart the game to install it automatically."
-                : "Downloaded " + release.tagName + " to config/Skyblock+/updates.";
-        SkyblockPlusClient.LOGGER.info("[Skyblock+ AutoUpdater] Downloaded {} to {}", asset.name, destination.toAbsolutePath());
+                ? "Downloaded " + update.displayTag() + ". Close the game to install it."
+                : "Downloaded " + update.displayTag() + " to config/Skyblock+/updates.";
+        sendClientMessage(statusLine);
+        SkyblockPlusClient.LOGGER.info("[Skyblock+ AutoUpdater] Downloaded {} to {}", update.assetName, destination.toAbsolutePath());
     }
 
     private static Optional<Path> resolveCurrentJarPath() {
@@ -229,6 +330,18 @@ public final class AutoUpdater {
             SkyblockPlusClient.LOGGER.debug("[Skyblock+ AutoUpdater] Unable to resolve current jar path", e);
         }
         return Optional.empty();
+    }
+
+    private static Path destinationFor(AvailableUpdate update, Optional<Path> currentJar, boolean createDirectories) throws IOException {
+        if (currentJar.isPresent()) {
+            return pendingPathFor(currentJar.get());
+        }
+
+        Path updateDir = Path.of("config", "Skyblock+", "updates");
+        if (createDirectories) {
+            Files.createDirectories(updateDir);
+        }
+        return updateDir.resolve(update.assetName);
     }
 
     private static Path pendingPathFor(Path currentJar) {
@@ -326,6 +439,26 @@ public final class AutoUpdater {
         }
     }
 
+    private static void notifyUpdateAvailable(AvailableUpdate update, boolean manual) {
+        String promptTag = update.displayTag();
+        if (!manual && promptTag.equals(lastPromptedTag)) {
+            return;
+        }
+        lastPromptedTag = promptTag;
+        sendClientMessage("Update " + promptTag + " is available from GitHub for " + update.currentVersion
+                + ": " + update.assetName + " (" + formatBytes(update.size)
+                + "). Run /skyblock_plus update download to download and stage it.");
+    }
+
+    private static void sendClientMessage(String message) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> {
+            if (client.player != null) {
+                client.player.displayClientMessage(Component.literal("[Skyblock+] " + message), false);
+            }
+        });
+    }
+
     private static String normalizeVersion(String version) {
         if (version == null) {
             return "";
@@ -335,6 +468,48 @@ public final class AutoUpdater {
             normalized = normalized.substring(1);
         }
         return normalized;
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes <= 0) {
+            return "unknown size";
+        }
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        if (bytes < 1024L * 1024L) {
+            return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        }
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    private static final class AvailableUpdate {
+        private final String tagName;
+        private final String latestVersion;
+        private final String currentVersion;
+        private final String assetName;
+        private final long size;
+        private final String browserDownloadUrl;
+
+        private AvailableUpdate(String tagName, String latestVersion, String currentVersion, String assetName,
+                                long size, String browserDownloadUrl) {
+            this.tagName = tagName;
+            this.latestVersion = latestVersion;
+            this.currentVersion = currentVersion;
+            this.assetName = assetName;
+            this.size = size;
+            this.browserDownloadUrl = browserDownloadUrl;
+        }
+
+        private String displayTag() {
+            if (tagName != null && !tagName.isBlank()) {
+                return tagName;
+            }
+            if (latestVersion != null && !latestVersion.isBlank()) {
+                return latestVersion;
+            }
+            return "latest";
+        }
     }
 
     private static final class GithubRelease {

@@ -163,13 +163,19 @@ public class SkyblockPlusClient implements ClientModInitializer {
                                         context.getSource().sendFeedback(Component.literal("[Skyblock+] Checking GitHub releases..."));
                                         return 0;
                                     }))
+                            .then(literal("download")
+                                    .executes(context -> {
+                                        AutoUpdater.downloadAvailableUpdateAsync();
+                                        context.getSource().sendFeedback(Component.literal("[Skyblock+] " + AutoUpdater.getStatusLine()));
+                                        return 0;
+                                    }))
                             .then(literal("on")
                                     .executes(context -> {
                                         ConfigManager.GENERAL.AUTO_UPDATE_ENABLED = true;
                                         ConfigManager.GENERAL.markAsChanged();
                                         AutoUpdater.setEnabledState(true);
                                         AutoUpdater.checkForUpdatesAsync(true);
-                                        context.getSource().sendFeedback(Component.literal("[Skyblock+] Auto updater enabled."));
+                                        context.getSource().sendFeedback(Component.literal("[Skyblock+] Auto updater enabled. Downloads will ask first."));
                                         return 0;
                                     }))
                             .then(literal("off")

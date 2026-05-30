@@ -15,6 +15,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.function.Supplier;
+
 public class ModuleItemView implements MeasurableElement {
     public static final int LAYER_DEPTH = ClickGUIScreen.LAYER_DEPTH + 3;
     public static final float HEIGHT = 58F;
@@ -29,6 +31,8 @@ public class ModuleItemView implements MeasurableElement {
     private boolean optionsOpen;
     private boolean compact;
     private Switch simpleSwitcher;
+    private @Nullable Supplier<String> titleSupplier;
+    private @Nullable Supplier<String> subtitleSupplier;
 
     private ModuleItemView(Minecraft client, @NotNull String title, String subtitle) {
         this.title = title;
@@ -52,6 +56,12 @@ public class ModuleItemView implements MeasurableElement {
 
     ModuleItemView compact() {
         this.compact = true;
+        return this;
+    }
+
+    ModuleItemView withDynamicText(@Nullable Supplier<String> titleSupplier, @Nullable Supplier<String> subtitleSupplier) {
+        this.titleSupplier = titleSupplier;
+        this.subtitleSupplier = subtitleSupplier;
         return this;
     }
 
@@ -96,13 +106,15 @@ public class ModuleItemView implements MeasurableElement {
         if (optionsCallback != null) rightReserve += 24F;
         float textStartX = startX + (compact ? 8F : 14F);
         float textEndX = Math.max(textStartX + 28F, endX - rightReserve);
+        String renderedTitle = titleSupplier == null ? title : titleSupplier.get();
+        String renderedSubtitle = subtitleSupplier == null ? subtitle : subtitleSupplier.get();
         RenderedText titleText = FontManager.requestRenderedText(
-                new RenderInfo(FontManager.BOLD_FONT, title, 9F), scale);
+                new RenderInfo(FontManager.BOLD_FONT, renderedTitle, 9F), scale);
         context.enableScissor(Mth.floor(textStartX), Mth.floor(startY), Mth.ceil(textEndX), Mth.ceil(endY));
         titleText.draw(context, textStartX, compact ? startY + 8F : startY + 13F, scale, 0xFFEDEAF5);
-        if (subtitle != null) {
+        if (renderedSubtitle != null) {
             RenderedText subtitleText = FontManager.requestRenderedText(
-                new RenderInfo(FontManager.DEFAULT_FONT, subtitle, 7F), scale);
+                new RenderInfo(FontManager.DEFAULT_FONT, renderedSubtitle, 7F), scale);
             subtitleText.draw(context, textStartX, compact ? startY + 21F : startY + 30F, scale, 0xFF9B96A7);
         }
         context.disableScissor();
